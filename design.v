@@ -40,4 +40,48 @@ module stream_buf (
     wire push;
     wire pop;
 
+	assign full  = (count == DEPTH);    // FIFO Full detection
+  	assign empty = (count == 0);    	// FIFO empty detection
+
+    assign s_ready = rst_n && !full;
+    assign m_valid = rst_n && !empty;
+    assign push = s_valid && s_ready;
+    assign pop  = m_valid && m_ready;
+
+    assign m_data = mem[rd_ptr];    	// Asynchronous read; because consumer using a valid/ready handshake.
+
+    always @(posedge clk) begin         // Synchronous write; memory only captures data at the rising clock edge when a valid/ready transfer occurs.
+        if (push)
+            mem[wr_ptr] <= s_data;
+    end
+
+    always @(posedge clk or negedge rst_n) begin    // Asynchronous reset; Because it clears the FIFO control registers immediately when rst_n goes LOW, without waiting for a clock edge.
+        if (!rst_n) begin
+            rd_ptr <= 0;
+            wr_ptr <= 0;
+            count  <= 0;
+        end
+      	else begin
+            if (push) begin
+                if (wr_ptr == DEPTH-1)
+                    wr_ptr <= 0;
+                else
+                    wr_ptr <= wr_ptr + 1'b1;
+            end
+            if (pop) begin
+                if (rd_ptr == DEPTH-1)
+                    rd_ptr <= 0;
+                else
+                    rd_ptr <= rd_ptr + 1'b1;
+            end
+
+            case ({push, pop})
+                2'b10: count <= count + 1'b1;
+                2'b01: count <= count - 1'b1;
+                2'b11: count <= count;
+                2'b00: count <= count;
+            endcase
+        end
+    end
+
 endmodule
